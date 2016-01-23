@@ -360,6 +360,7 @@ COMPARITOR_FUNCTION(const struct list_elem *a, const struct list_elem *b, void *
 	}
 	return false;
 }
+
 void
 threads_wake(void){
 	//Iterate over list and wake up thread with the least sleep 
@@ -535,6 +536,20 @@ alloc_frame (struct thread *t, size_t size)
   return t->stack;
 }
 
+/* Created 1/22/2016 by Marco Rubio
+ * This function is used by the sorting function located inside
+ * the next_thread_to_run function. 
+ */
+static bool
+PRIORITY_COMPARITOR_FUNCTION(const struct list_elem *a, const struct list_elem *b, void *aux ){
+	struct thread *threadA = list_entry(a, struct thread, elem);
+	struct thread *threadB = list_entry(b, struct thread, elem);
+	if(threadA->priority < threadB->priority){
+		return true;
+	}
+	return false;
+}
+
 /* Chooses and returns the next thread to be scheduled.  Should
    return a thread from the run queue, unless the run queue is
    empty.  (If the running thread can continue running, then it
@@ -545,8 +560,10 @@ next_thread_to_run (void)
 {
   if (list_empty (&ready_list))
 	return idle_thread;
-  else
+  else{
+	list_sort(&ready_list, PRIORITY_COMPARITOR_FUNCTION, NULL);
 	return list_entry(list_pop_front(&ready_list),struct thread, elem);
+  }
 }
    /* At this function's invocation, we just switched from thread
    PREV, the new thread is already running, and interrupts are
