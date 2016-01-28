@@ -89,7 +89,8 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
-    long long sleep_time;		// time to sleep 1/20/2016
+    struct list donor_list;     //Marco Rubio 1/22/2016
+    int64_t sleep_time;		// time to sleep 1/20/2016
 
     struct list_elem allelem;           /* List element for all threads list. */
 

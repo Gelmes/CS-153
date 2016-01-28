@@ -209,7 +209,8 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
-
+  //struct thread * cur = running_thread();
+  thread_yield();
   return tid;
 }
 
@@ -222,7 +223,9 @@ thread_create (const char *name, int priority,
 void
 thread_block (void) 
 {
-  ASSERT (!intr_context ());
+  //printf("Context: %d", !intr_context());
+  //printf("Level: %d", intr_get_level() == INTR_OFF);
+  ASSERT (!intr_context ()); //are we causing an external interrupt? panic
   ASSERT (intr_get_level () == INTR_OFF);
 
   thread_current ()->status = THREAD_BLOCKED;
@@ -340,14 +343,17 @@ thread_sleep (int64_t time)
   enum intr_level old_level;
 
   ASSERT (!intr_context ());
- 
+  printf("Putting Thread to sleep\n"); 
   old_level = intr_disable ();
-  if (cur != idle_thread){ 
+  if (cur != idle_thread){
+    printf("Blocking Thread \n"); 
     int64_t timer_time = timer_ticks();
     cur->sleep_time = time + timer_time; //add curent time 1/20/2016
+    printf("Sleeping Thread: %d\n",cur->tid);
     list_insert_ordered (&sleep_list, &cur->elem, COMPARITOR_FUNCTION, NULL); //edited list 1/13/2016
+    thread_block(); //added 1/13/2016
+    printf("Setting interrupts back\n");
   }
-  thread_block(); //added 1/13/2016
   intr_set_level (old_level);
 }
 
@@ -363,14 +369,36 @@ COMPARITOR_FUNCTION(const struct list_elem *a, const struct list_elem *b, void *
 
 void
 threads_wake(void){
+	enum intr_level old_level;
+	old_level = intr_disable ();
+
+	int64_t cur_ticks = timer_ticks();
+	//printf("Waking Threads\n");
 	//Iterate over list and wake up thread with the least sleep 
-	struct list_elem * e = list_begin(&sleep_list);
-        struct thread *sleeping_thread = list_entry(e, struct thread, elem);	
-	if(sleeping_thread->sleep_time < timer_ticks()){
-		list_remove(e);
-		list_push_back(&ready_list,e);
+	struct list_elem * e;// = list_begin(&sleep_list);
+	struct thread *sleeping_thread;// = list_entry(e, struct thread, elem);	
+	while(!list_empty(&sleep_list)){
+		//Iterate over list and wake up thread with the least sleep 
+		e = list_begin(&sleep_list);
+		sleeping_thread = list_entry(e, struct thread, elem);	
+		//printf("Aquired thread\n");
+		//if(sleeping_thread->sleep_time < cur_ticks){
+		if(sleeping_thread->sleep_time < cur_ticks){
+			printf("Wakingup thread\n");	
+			list_pop_front(&sleep_list);
+			//list_remove(&e);
+			thread_unblock(sleeping_thread);
+			list_push_back(&ready_list,&e);
+		//	thread_unblock(sleeping_thread);
+		}
+		else{
+			break;
+		}
 	}
-			
+	//printf("End of waking\n");
+	//thread_block();
+	intr_set_level(old_level);
+	//printf("Interupt Leves set back to normal");			
 		
 }
 /* Invoke function 'func' on all threads, passing along 'aux'.
@@ -521,6 +549,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
+  list_init(&t->donor_list); // Marco Rubio Starts list 1/22/2016
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -561,7 +590,7 @@ next_thread_to_run (void)
   if (list_empty (&ready_list))
 	return idle_thread;
   else{
-	list_sort(&ready_list, PRIORITY_COMPARITOR_FUNCTION, NULL);
+	//list_sort(&ready_list, PRIORITY_COMPARITOR_FUNCTION, NULL);
 	return list_entry(list_pop_front(&ready_list),struct thread, elem);
   }
 }
