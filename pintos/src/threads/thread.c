@@ -339,28 +339,31 @@ thread_yield (void)
 void
 thread_sleep (int64_t time) 
 {
-  struct thread *cur = thread_current ();
-  enum intr_level old_level;
+	if(time > 0){
+	 
+	  struct thread *cur = thread_current ();
+	  enum intr_level old_level;
 
-  ASSERT (!intr_context ());
-  printf("Putting Thread to sleep\n"); 
-  old_level = intr_disable ();
-  if (cur != idle_thread){
-    printf("Blocking Thread \n"); 
-    int64_t timer_time = timer_ticks();
-    cur->sleep_time = time + timer_time; //add curent time 1/20/2016
-    printf("Sleeping Thread: %d\n",cur->tid);
-    list_insert_ordered (&sleep_list, &cur->elem, COMPARITOR_FUNCTION, NULL); //edited list 1/13/2016
-    thread_block(); //added 1/13/2016
-    printf("Setting interrupts back\n");
-  }
-  intr_set_level (old_level);
+	  ASSERT (!intr_context ());
+	  printf("Putting Thread to sleep\n"); 
+	  old_level = intr_disable ();
+	  if (cur != idle_thread){
+	    printf("Blocking Thread \n"); 
+	    int64_t timer_time = timer_ticks();
+	    cur->sleep_time = time + timer_time; //add curent time 1/20/2016
+	    printf("Sleeping Thread: %d\n",cur->tid);
+	    list_insert_ordered (&sleep_list, &cur->sleep_elem, COMPARITOR_FUNCTION, NULL); //edited list 1/13/2016
+	    thread_block(); //added 1/13/2016
+	    printf("Setting interrupts back\n");
+	  }
+	  intr_set_level (old_level);
+	}
 }
 
 static bool
 COMPARITOR_FUNCTION(const struct list_elem *a, const struct list_elem *b, void *aux ){
-	struct thread *threadA = list_entry(a, struct thread, elem);
-	struct thread *threadB = list_entry(b, struct thread, elem);
+	struct thread *threadA = list_entry(a, struct thread, sleep_elem);
+	struct thread *threadB = list_entry(b, struct thread, sleep_elem);
 	if(threadA->sleep_time < threadB->sleep_time){
 		return true;
 	}
@@ -380,15 +383,17 @@ threads_wake(void){
 	while(!list_empty(&sleep_list)){
 		//Iterate over list and wake up thread with the least sleep 
 		e = list_begin(&sleep_list);
-		sleeping_thread = list_entry(e, struct thread, elem);	
+		sleeping_thread = list_entry(e, struct thread, sleep_elem);	
 		//printf("Aquired thread\n");
 		//if(sleeping_thread->sleep_time < cur_ticks){
 		if(sleeping_thread->sleep_time < cur_ticks){
 			printf("Wakingup thread\n");	
 			list_pop_front(&sleep_list);
+			printf("Blocking Thread\n");
 			//list_remove(&e);
 			thread_unblock(sleeping_thread);
-			list_push_back(&ready_list,&e);
+			printf("Putting thread in the ready list\n");
+			//list_push_back(&ready_list,&sleeping_thread->elem);
 		//	thread_unblock(sleeping_thread);
 		}
 		else{
@@ -418,14 +423,37 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
+/* Created 1/22/2016 by Marco Rubio
+ * This function is used by the sorting function located inside
+ * the next_thread_to_run function. 
+ */
+static bool
+PRIORITY_COMPARITOR_FUNCTION(const struct list_elem *a, const struct list_elem *b, void *aux ){
+	struct thread *threadA = list_entry(a, struct thread, elem);
+	struct thread *threadB = list_entry(b, struct thread, elem);
+	if(threadA->priority < threadB->priority){
+		return true;
+	}
+	return false;
+}
+
+
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  struct thread * cur = thread_current();
+  cur->priority = new_priority;
+//1/27/2016 Yield current thread if its priority is not the highest
+  //Get thread with max priority and schedule it???
+  struct thread * max =  list_max(&ready_list, PRIORITY_COMPARITOR_FUNCTION, NULL); //returns thread
+  if(new_priority < max->priority){
+	thread_yield();
+  }
+
 }
 
-/* Returns the current thread's priority. */
 int
 thread_get_priority (void) 
 {
@@ -538,6 +566,7 @@ is_thread (struct thread *t)
 static void
 init_thread (struct thread *t, const char *name, int priority)
 {
+
   ASSERT (t != NULL);
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
   ASSERT (name != NULL);
@@ -565,20 +594,6 @@ alloc_frame (struct thread *t, size_t size)
   return t->stack;
 }
 
-/* Created 1/22/2016 by Marco Rubio
- * This function is used by the sorting function located inside
- * the next_thread_to_run function. 
- */
-static bool
-PRIORITY_COMPARITOR_FUNCTION(const struct list_elem *a, const struct list_elem *b, void *aux ){
-	struct thread *threadA = list_entry(a, struct thread, elem);
-	struct thread *threadB = list_entry(b, struct thread, elem);
-	if(threadA->priority < threadB->priority){
-		return true;
-	}
-	return false;
-}
-
 /* Chooses and returns the next thread to be scheduled.  Should
    return a thread from the run queue, unless the run queue is
    empty.  (If the running thread can continue running, then it
@@ -590,8 +605,7 @@ next_thread_to_run (void)
   if (list_empty (&ready_list))
 	return idle_thread;
   else{
-	//list_sort(&ready_list, PRIORITY_COMPARITOR_FUNCTION, NULL);
-	return list_entry(list_pop_front(&ready_list),struct thread, elem);
+	return list_entry(list_max(&ready_list, PRIORITY_COMPARITOR_FUNCTION, NULL),struct thread, elem);
   }
 }
    /* At this function's invocation, we just switched from thread
