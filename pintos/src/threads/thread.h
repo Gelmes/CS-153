@@ -124,7 +124,11 @@ void threads_wake(void); //added 1/20/2016
 void thread_sleep(int64_t);
 void thread_block (void);
 void thread_unblock (struct thread *);
-static bool COMPARITOR_FUNCTION(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+bool COMPARITOR_FUNCTION(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
+bool PRIORITY_COMPARITOR_FUNCTION(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
+
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);

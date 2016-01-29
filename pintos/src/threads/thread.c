@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "devices/timer.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -360,8 +361,8 @@ thread_sleep (int64_t time)
 	}
 }
 
-static bool
-COMPARITOR_FUNCTION(const struct list_elem *a, const struct list_elem *b, void *aux ){
+bool
+COMPARITOR_FUNCTION(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
 	struct thread *threadA = list_entry(a, struct thread, sleep_elem);
 	struct thread *threadB = list_entry(b, struct thread, sleep_elem);
 	if(threadA->sleep_time < threadB->sleep_time){
@@ -427,8 +428,8 @@ thread_foreach (thread_action_func *func, void *aux)
  * This function is used by the sorting function located inside
  * the next_thread_to_run function. 
  */
-static bool
-PRIORITY_COMPARITOR_FUNCTION(const struct list_elem *a, const struct list_elem *b, void *aux ){
+bool
+PRIORITY_COMPARITOR_FUNCTION(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
 	struct thread *threadA = list_entry(a, struct thread, elem);
 	struct thread *threadB = list_entry(b, struct thread, elem);
 	if(threadA->priority < threadB->priority){
@@ -447,7 +448,7 @@ thread_set_priority (int new_priority)
   cur->priority = new_priority;
 //1/27/2016 Yield current thread if its priority is not the highest
   //Get thread with max priority and schedule it???
-  struct thread * max =  list_max(&ready_list, PRIORITY_COMPARITOR_FUNCTION, NULL); //returns thread
+  struct thread * max = list_entry( list_max(&ready_list, PRIORITY_COMPARITOR_FUNCTION, NULL), struct thread, elem); //returns thread
   if(new_priority < max->priority){
 	thread_yield();
   }
@@ -605,7 +606,9 @@ next_thread_to_run (void)
   if (list_empty (&ready_list))
 	return idle_thread;
   else{
-	return list_entry(list_max(&ready_list, PRIORITY_COMPARITOR_FUNCTION, NULL),struct thread, elem);
+	struct list_elem * max = list_max(&ready_list, PRIORITY_COMPARITOR_FUNCTION, NULL);
+	return list_entry(max ,struct thread, elem);
+        //return list_entry(list_pop_front(&ready_list),struct thread, elem);
   }
 }
    /* At this function's invocation, we just switched from thread
