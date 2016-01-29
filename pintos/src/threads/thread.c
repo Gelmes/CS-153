@@ -258,7 +258,8 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
- list_push_back (&ready_list, &t->elem);
+  //list_push_back (&ready_list, &t->elem);
+  list_insert_ordered(&ready_list, &t->elem, PRIORITY_COMPARITOR_FUNCTION, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -432,7 +433,7 @@ bool
 PRIORITY_COMPARITOR_FUNCTION(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
 	struct thread *threadA = list_entry(a, struct thread, elem);
 	struct thread *threadB = list_entry(b, struct thread, elem);
-	if(threadA->priority < threadB->priority){
+	if(threadA->priority > threadB->priority){
 		return true;
 	}
 	return false;
@@ -606,9 +607,11 @@ next_thread_to_run (void)
   if (list_empty (&ready_list))
 	return idle_thread;
   else{
-	struct list_elem * max = list_max(&ready_list, PRIORITY_COMPARITOR_FUNCTION, NULL);
-	return list_entry(max ,struct thread, elem);
-        //return list_entry(list_pop_front(&ready_list),struct thread, elem);
+	//printf("Getting Max thread");
+	//struct list_elem * max = list_max(&ready_list, PRIORITY_COMPARITOR_FUNCTION, NULL);
+	//printf("Getting thread from element");
+	//return list_entry(max ,struct thread, elem);
+        return list_entry(list_pop_front(&ready_list),struct thread, elem);
   }
 }
    /* At this function's invocation, we just switched from thread
