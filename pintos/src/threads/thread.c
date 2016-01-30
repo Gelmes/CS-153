@@ -16,6 +16,7 @@
 #include "userprog/process.h"
 #endif
 
+#define DEPTH_LIMIT 8
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
@@ -210,9 +211,83 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
+  old_level = intr_disable();
+  check_priority();
+  intr_set_level(old_level);
   //struct thread * cur = running_thread();
-  thread_yield();
+  //thread_yield();
   return tid;
+}
+
+/*Remove the thread with the lock */
+void release_lock(struct lock * lock)
+{
+	struct list_elem * e = list_begin(&thread_current()->donor_list);
+	struct list_elem * next;
+	while (e != list_end(&thread_current()->donor_list))
+	{
+		struct thread *t = list_entry(e, struct thread, donation_elem);
+		next = list_next(e);
+		if (t->w_on_l == lock)
+		{
+			list_remove(e);
+		}
+		e = next;
+	}
+}
+
+void update_priority (void)
+{
+	struct thread *t = thread_current();
+	t->priority = t->start_priority;
+	if(list_empty(&t->donor_list)){
+		return;
+	}
+	struct thread *s = list_entry(list_front(&t->donor_list), struct thread, donation_elem);
+
+	if(s->priority > t->priority)
+	{
+		t->priority = s->priority;
+	}
+}
+
+void donate_priority(void){
+	int depth = 0;
+	struct thread *cur = thread_current();
+	struct lock * l = cur->w_on_l;
+	while(l && depth < DEPTH_LIMIT)
+	{
+		depth++;
+		if(!l->holder)
+		{
+			return;
+		}
+		if(l->holder->priority >= cur->priority)
+		{
+			return;
+		}
+		l->holder->priority = cur->priority;
+		cur = l->holder;
+		l = cur->w_on_l;
+	}
+}
+
+void check_priority(void)
+{
+	if(list_empty(&ready_list)){
+		return;
+	}
+	struct thread *t = list_entry(list_front(&ready_list), struct thread, elem);
+	if(intr_context()){
+		thread_ticks++;
+		if(thread_current()->priority < t->priority || (thread_ticks >= TIME_SLICE && thread_current()->priority == t->priority)){
+			intr_yield_on_return();
+		}
+		return;
+	}
+	if(thread_current()->priority < t->priority){
+		thread_yield();
+	}
 }
 
 /* Puts the current thread to sleep.  It will not be scheduled
@@ -258,6 +333,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
+  printf("Unblocking Thread");
   //list_push_back (&ready_list, &t->elem);
   list_insert_ordered(&ready_list, &t->elem, PRIORITY_COMPARITOR_FUNCTION, NULL);
   t->status = THREAD_READY;
@@ -329,8 +405,10 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+  if (cur != idle_thread){ 
+    //list_push_back (&ready_list, &cur->elem);
+    list_insert_ordered(&ready_list, &cur->elem, PRIORITY_COMPARITOR_FUNCTION, NULL);
+  }
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -347,16 +425,16 @@ thread_sleep (int64_t time)
 	  enum intr_level old_level;
 
 	  ASSERT (!intr_context ());
-	  printf("Putting Thread to sleep\n"); 
+//	  printf("Putting Thread to sleep\n"); 
 	  old_level = intr_disable ();
 	  if (cur != idle_thread){
-	    printf("Blocking Thread \n"); 
+//	    printf("Blocking Thread \n"); 
 	    int64_t timer_time = timer_ticks();
 	    cur->sleep_time = time + timer_time; //add curent time 1/20/2016
-	    printf("Sleeping Thread: %d\n",cur->tid);
+//	    printf("Sleeping Thread: %d\n",cur->tid);
 	    list_insert_ordered (&sleep_list, &cur->sleep_elem, COMPARITOR_FUNCTION, NULL); //edited list 1/13/2016
 	    thread_block(); //added 1/13/2016
-	    printf("Setting interrupts back\n");
+//	    printf("Setting interrupts back\n");
 	  }
 	  intr_set_level (old_level);
 	}
@@ -389,12 +467,12 @@ threads_wake(void){
 		//printf("Aquired thread\n");
 		//if(sleeping_thread->sleep_time < cur_ticks){
 		if(sleeping_thread->sleep_time < cur_ticks){
-			printf("Wakingup thread\n");	
+		    //	printf("Wakingup thread\n");	
 			list_pop_front(&sleep_list);
-			printf("Blocking Thread\n");
+		//	printf("Blocking Thread\n");
 			//list_remove(&e);
 			thread_unblock(sleeping_thread);
-			printf("Putting thread in the ready list\n");
+		//	printf("Putting thread in the ready list\n");
 			//list_push_back(&ready_list,&sleeping_thread->elem);
 		//	thread_unblock(sleeping_thread);
 		}
@@ -446,20 +524,27 @@ void
 thread_set_priority (int new_priority) 
 {
   struct thread * cur = thread_current();
-  cur->priority = new_priority;
-//1/27/2016 Yield current thread if its priority is not the highest
-  //Get thread with max priority and schedule it???
-  struct thread * max = list_entry( list_max(&ready_list, PRIORITY_COMPARITOR_FUNCTION, NULL), struct thread, elem); //returns thread
-  if(new_priority < max->priority){
-	thread_yield();
+  enum intr_level old_level = intr_disable();
+  int old_priority = cur->priority;
+  cur->start_priority = new_priority;
+  update_priority();
+  if(old_priority < thread_current()->priority){
+	donate_priority();
   }
+  if(old_priority > thread_current()->priority){
+	check_priority();
+  }
+  intr_set_level (old_level);
 
 }
 
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->priority;
+  enum intr_level old_level = intr_disable();
+  int tmp = thread_current()->priority;
+  intr_set_level(old_level);
+  return tmp;
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -581,6 +666,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
   list_init(&t->donor_list); // Marco Rubio Starts list 1/22/2016
+  t->start_priority = priority;
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

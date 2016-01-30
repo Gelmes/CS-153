@@ -89,6 +89,7 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
+    int start_priority; 		// Priority thread starts with 1/29/2016
     struct list donor_list;     //Marco Rubio 1/22/2016
     int64_t sleep_time;		// time to sleep 1/20/2016
 
@@ -97,6 +98,9 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
     struct list_elem sleep_elem;
+    struct list_elem donation_elem;
+
+    struct lock * w_on_l; //wait on lock added 1/29/2016
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -148,5 +152,13 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+/* some of the new functions i created 1/29/2016 Marco Rubio */
+void update_priority(void);
+void donate_priority (void);
+void release_lock(struct lock *);
+void check_priority(void);
+
+
 
 #endif /* threads/thread.h */
